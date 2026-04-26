@@ -1,0 +1,63 @@
+[![Hippocratic License HL3-FULL](https://img.shields.io/static/v1?label=Hippocratic%20License&message=HL3-FULL&labelColor=5e2751&color=bc8c3d)](https://firstdonoharm.dev/version/3/0/full.html)
+
+# A TypeScript implementation of "Complete and Easy Bidirectional Typechecking for Higher-Rank Polymorphism"[^1] by Dunfield and Krishnaswami
+
+This project contains two implementations of a bidirectional type checker for the Dunfield and Krishnaswami type system.
+
+The first implementation tries to follow the paper as closely as possible. I did not attempt to find any existing implementations as reference. I may try to find something in the future just for validation, but I think I've faithfully implemented everything.
+
+In the paper, the key insight is to use an ordered context to carefully control the scope of type variables. This gives a very nice formalism for defining the type system. However, this comes with some practical drawbacks. The context is not a usual typing context, but a judgemental context which has to do triple-duty: record the types of variables, declaration order and scope of type variables, and substitutions/solutions for solved constraints.
+
+The second implementation attempts to avoid some of the complexities of this overloaded context by separating the judgement context back into a simple typing context. This is done by tracking depths of binders, loosely inspired by Rémy's algorithm[^2]. By separating the context out, we can also use locally nameless de Bruijn indices and levels.
+
+To try out some features and read more about the project, check out [this blog post](https://verychill.biz/blog/bidirectional-typechecking-dk).
+
+## Notes
+
+### Extensions
+
+I did allow myself to deviate from the paper in one aspect, which is to add synthesis and checking rules for annotated parameters.
+Terms like `λx:A.e`. I think this is ok, since it is a pure extension. If your term contains no annotated parameters, you will get the exact same derivations as in the paper.
+
+```
+Γ,β̂,x:A ⊢ e ⇐ β̂ ⊣ Δ,x:A,Θ
+─────────────────────────
+ Γ ⊢ λx:A.e ⇒ A → β̂ ⊣ Δ
+
+Γ ⊢ A <: T ⊣ Θ  Θ,x:T ⊢ e ⇐ B ⊣ Δ,x:T,Θ'
+────────────────────────────────────────
+      Γ ⊢ λx:T.e ⇐ A → B ⊣ Δ
+```
+
+### Paper
+
+There are some technical problems with the proofs in the original paper. See Jinxu Zhao's paper[^3] for more details.
+
+But I think I found a new mistake in their example in Figure 12. It doesn't make a big difference, but it was quite confusing when trying to validate.
+
+```
+Γ′ = Γ[β̂₂, β̂₁, α̂ = β̂₁ → β̂₂]
+Δ = Γ[β̂₂, β̂₁ = β̂₂, α̂ = β̂₁ → β̂₂]
+
+──────────────────────────────────── InstLReach  ────────────────────────────────────────── InstRReach
+Γ′, ›β̂, β̂ ⊢ β̂₁ :≤ β̂ ⊣ Γ′, ›β̂, β̂ = β̂₁             Γ′, ›β̂, β̂ = β̂₁ ⊢ β̂₁ ≤: β̂₂ ⊣ Δ, ›β̂, β̂ = β̂₁
+─────────────────────────────────────────────────────────────────────────────────────────── InstRArr
+                   Γ[α̂], ›β̂, β̂ ⊢ β̂ → β̂ ≤: α̂ ⊣ Δ, ›β̂, β̂ = β̂₁
+                   ──────────────────────────────────────── InstRAllL
+                          Γ[α̂] ⊢ ∀β.β → β ≤: α̂ ⊣ Δ
+```
+
+The example of instantiation applies the `InstRArr` rule incorrectly, swapping the domain and codomain, leading to an application of `InstRSolve` instead of `InstRReach`.
+Notice `α̂` now solves to `β̂₂ → β̂₂` instead of `β̂₁ → β̂₁`.
+
+## Future Work
+
+The current output trace formats always show the entire context. What would be better is if we saw only the differences between steps.
+
+I may also add rules for `Λ` abstractions, which should be even simpler.
+
+---
+
+[^1]: [Complete and Easy Bidirectional Typechecking for Higher-Rank Polymorphism](https://arxiv.org/abs/1306.6032)
+[^2]: [How OCaml type checker works](https://okmij.org/ftp/ML/generalization.html)
+[^3]: [Formalization of a Polymorphic Subtyping Algorithm](https://i.cs.hku.hk/~jxzhao/pdf/itp2018.pdf)
