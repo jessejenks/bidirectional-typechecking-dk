@@ -2,7 +2,7 @@
 
 # A TypeScript implementation of "Complete and Easy Bidirectional Typechecking for Higher-Rank Polymorphism"[^1] by Dunfield and Krishnaswami
 
-This project contains two implementations of a bidirectional type checker for the Dunfield and Krishnaswami type system.
+This project contains two implementations of a bidirectional type checker for the Dunfield and Krishnaswami (DK) type system.
 
 The first implementation tries to follow the paper as closely as possible. I did not attempt to find any existing implementations as reference. I may try to find something in the future just for validation, but I think I've faithfully implemented everything.
 
@@ -11,6 +11,8 @@ In the paper, the key insight is to use an ordered context to carefully control 
 The second implementation attempts to avoid some of the complexities of this overloaded context by separating the judgement context back into a simple typing context. This is done by tracking depths of binders, loosely inspired by Rémy's algorithm[^2]. By separating the context out, we can also use locally nameless de Bruijn indices and levels.
 
 To try out some features and read more about the project, check out [this blog post](https://verychill.biz/blog/bidirectional-typechecking-dk).
+
+This project also contains an implementation of the classic Damas-Hindley-Milner (HM) type system in a similar style, as a point of comparison.
 
 ## Notes
 

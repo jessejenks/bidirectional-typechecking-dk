@@ -83,7 +83,7 @@ function traceToProofTreeInner(trace: Trace): { width: number; lines: string[] }
 	return { width, lines };
 }
 
-type Trace = { name: string; startContext: string; endContext: string; body: string; children: Trace[] };
+export type Trace = { name: string; startContext: string; endContext: string; body: string; children: Trace[] };
 
 const onEnd = (traces: Trace[], trace: Trace) => {
 	switch (trace.name) {
