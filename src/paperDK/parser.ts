@@ -13,7 +13,7 @@ import {
 	Variable,
 } from "./ast";
 
-const { spaces, exact, sequence, zeroOrMore, oneOf, conditional, lazy, map, succeed, fromRegExp, completely } = Parser;
+const { spaces, exact, validate, sequence, zeroOrMore, oneOf, conditional, lazy, map, succeed, fromRegExp, completely } = Parser;
 
 const typeIdentifier = fromRegExp(/[\u03B1-\u03BA\u03BC-\u03C9A-Z][\u03B1-\u03BA\u03BC-\u03C9A-Za-z0-9_]*/, "a type variable");
 
@@ -89,7 +89,8 @@ export const parseType = (input: string) => {
 	return LibResult.isOk(res) ? Result.Ok(res.value.parsed) : Result.Err(res.error.message);
 };
 
-const identifier = fromRegExp(/[a-z][a-zA-Z0-9_]*/, "a variable");
+const keywords = new Set(["let", "in"]);
+const identifier = validate((ident) => !keywords.has(ident), fromRegExp(/[a-z][a-zA-Z0-9_]*/, "a variable"));
 const variableParser = map((name): Variable => ({ kind: Kind.Variable, name }), identifier);
 const optionalAnnotationParser = oneOf(
 	map(([, [, tp]]) => tp, conditional(sequence(spaces(), exact(":")), sequence(spaces(), typeParser))),
@@ -178,7 +179,29 @@ const applicationParser: Parser<Expression> = map(
 	),
 );
 
-const termParser = applicationParser;
+const letParser: Parser<Application> = map(
+	([, [variable, , , , expression, , , , body]]): Application => ({
+		kind: Kind.Application,
+		left: { kind: Kind.Abstraction, variable, body },
+		right: expression,
+	}),
+	conditional(
+		sequence(exact("let"), spaces(true)),
+		sequence(
+			identifier,
+			spaces(),
+			exact("="),
+			spaces(),
+			lazy(() => atomParser),
+			spaces(),
+			exact("in"),
+			spaces(true),
+			lazy(() => termParser),
+		),
+	),
+);
+
+const termParser = oneOf(letParser, applicationParser);
 
 export const parse = (input: string) => {
 	const res = completely(termParser).parse(input);

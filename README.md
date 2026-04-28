@@ -31,6 +31,8 @@ Terms like `λx:A.e`. I think this is ok, since it is a pure extension. If your 
       Γ ⊢ λx:T.e ⇐ A → B ⊣ Δ
 ```
 
+Another small difference is that I added let expression syntax support to the DK parsers. These are immediately desugared, so it doesn't change anything about the underlying typechecking, but it makes it easier to compare with HM.
+
 ### Paper
 
 There are some technical problems with the proofs in the original paper. See Jinxu Zhao's paper[^3] for more details.
