@@ -96,7 +96,7 @@ const optionalAnnotationParser = oneOf(
 	succeed(null),
 );
 const lambdaParser = map(
-	([, [, variable, annotation, , , body]]): Abstraction | AnnotatedAbstraction =>
+	([, [, [variable, annotation], , , body]]): Abstraction | AnnotatedAbstraction =>
 		annotation === null
 			? {
 					kind: Kind.Abstraction,
@@ -113,8 +113,13 @@ const lambdaParser = map(
 		oneOf(exact("λ"), exact("\\")),
 		sequence(
 			spaces(),
-			identifier,
-			optionalAnnotationParser,
+			oneOf(
+				map(
+					([, [, x, , a]]) => [x, a] as const,
+					conditional(exact("("), sequence(spaces(), identifier, spaces(), optionalAnnotationParser, spaces(), exact(")"))),
+				),
+				map(([x, , a]) => [x, a] as const, sequence(identifier, spaces(), optionalAnnotationParser)),
+			),
 			exact("."),
 			spaces(),
 			lazy(() => termParser),
