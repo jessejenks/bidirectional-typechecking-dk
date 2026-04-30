@@ -271,6 +271,7 @@ export class Context {
 	apply(tp: TypeExpression): TypeExpression {
 		switch (tp.kind) {
 			case Kind.UnitType:
+			case Kind.IntType:
 			case Kind.TypeVariable:
 				return tp;
 			case Kind.ExistentialTypeVariable:
@@ -292,6 +293,12 @@ export class Context {
 			case Kind.ArrowType:
 				return {
 					kind: Kind.ArrowType,
+					left: this.apply(tp.left),
+					right: this.apply(tp.right),
+				};
+			case Kind.ProductType:
+				return {
+					kind: Kind.ProductType,
 					left: this.apply(tp.left),
 					right: this.apply(tp.right),
 				};

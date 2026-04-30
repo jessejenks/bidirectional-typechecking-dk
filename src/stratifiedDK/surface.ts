@@ -1,16 +1,21 @@
 export const enum Kind {
 	// Terms
 	UnitLiteral,
+	IntLiteral,
 	Variable,
 	Abstraction,
 	Application,
 	AnnotatedExpression,
 	AnnotatedAbstraction,
+	Addition,
+	Pair,
 	// Types
 	UnitType,
+	IntType,
 	TypeVariable,
 	UniversalType,
 	ArrowType,
+	ProductType,
 }
 
 export type UnitLiteral = { kind: Kind.UnitLiteral };
@@ -31,20 +36,42 @@ export type AnnotatedExpression = {
 	annotation: TypeExpression;
 };
 
-// Extension
+// Extensions
+export type IntLiteral = { kind: Kind.IntLiteral; value: number };
 export type AnnotatedAbstraction = {
 	kind: Kind.AnnotatedAbstraction;
 	variable: string;
 	annotation: TypeExpression;
 	body: Expression;
 };
+export type Addition = {
+	kind: Kind.Addition;
+	left: Expression;
+	right: Expression;
+};
+export type Pair = {
+	kind: Kind.Pair;
+	left: Expression;
+	right: Expression;
+};
 
-export type Expression = UnitLiteral | Variable | Abstraction | Application | AnnotatedExpression | AnnotatedAbstraction;
+export type Expression =
+	| UnitLiteral
+	| IntLiteral
+	| Variable
+	| Abstraction
+	| Application
+	| AnnotatedExpression
+	| AnnotatedAbstraction
+	| Addition
+	| Pair;
 
 export function expressionToString(expr: Expression): string {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
 			return "()";
+		case Kind.IntLiteral:
+			return expr.value.toString();
 		case Kind.Variable:
 			return expr.name;
 		case Kind.Abstraction:
@@ -67,18 +94,25 @@ export function expressionToString(expr: Expression): string {
 			return `(${expressionToString(expr.body)}) : ${typeExpressionToString(expr.annotation)}`;
 		case Kind.AnnotatedAbstraction:
 			return `λ${expr.variable}:${typeExpressionToString(expr.annotation)}.${expressionToString(expr.body)}`;
+		case Kind.Addition:
+			return `${expressionToString(expr.left)} + ${expressionToString(expr.right)}`;
+		case Kind.Pair:
+			return `<${expressionToString(expr.left)}, ${expressionToString(expr.right)}>`;
 	}
 }
 
 function shouldParenthesize(expr: Expression): boolean {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
+		case Kind.IntLiteral:
 		case Kind.Variable:
+		case Kind.Pair:
 			return false;
 		case Kind.Abstraction:
 		case Kind.Application:
 		case Kind.AnnotatedExpression:
 		case Kind.AnnotatedAbstraction:
+		case Kind.Addition:
 			return true;
 	}
 }
@@ -96,12 +130,22 @@ export type ArrowType = {
 	right: TypeExpression;
 };
 
-export type TypeExpression = UnitType | TypeVariable | UniversalType | ArrowType;
+// Extensions
+export type IntType = { kind: Kind.IntType };
+export type ProductType = {
+	kind: Kind.ProductType;
+	left: TypeExpression;
+	right: TypeExpression;
+};
+
+export type TypeExpression = UnitType | IntType | TypeVariable | UniversalType | ArrowType | ProductType;
 
 export function typeExpressionToString(tp: TypeExpression): string {
 	switch (tp.kind) {
 		case Kind.UnitType:
-			return "1";
+			return "Unit";
+		case Kind.IntType:
+			return "Int";
 		case Kind.TypeVariable:
 			return tp.name;
 		case Kind.UniversalType:
@@ -111,5 +155,19 @@ export function typeExpressionToString(tp: TypeExpression): string {
 				return `(${typeExpressionToString(tp.left)}) → ${typeExpressionToString(tp.right)}`;
 			}
 			return `${typeExpressionToString(tp.left)} → ${typeExpressionToString(tp.right)}`;
+		case Kind.ProductType: {
+			const parenLeft = tp.left.kind === Kind.ArrowType;
+			const parenRight = tp.right.kind === Kind.ArrowType;
+			if (parenLeft && parenRight) {
+				return `(${typeExpressionToString(tp.left)}) × (${typeExpressionToString(tp.right)})`;
+			}
+			if (parenLeft) {
+				return `(${typeExpressionToString(tp.left)}) × ${typeExpressionToString(tp.right)}`;
+			}
+			if (parenRight) {
+				return `${typeExpressionToString(tp.left)} × (${typeExpressionToString(tp.right)})`;
+			}
+			return `${typeExpressionToString(tp.left)} × ${typeExpressionToString(tp.right)}`;
+		}
 	}
 }

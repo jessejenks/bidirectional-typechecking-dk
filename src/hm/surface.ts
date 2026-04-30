@@ -1,13 +1,17 @@
 export const enum Kind {
 	// Terms
 	UnitLiteral,
+	IntLiteral,
 	Variable,
 	Application,
 	Abstraction,
+	Addition,
+	Pair,
 	Let,
 }
 
 export type UnitLiteral = { kind: Kind.UnitLiteral };
+export type IntLiteral = { kind: Kind.IntLiteral; value: number };
 export type Variable = { kind: Kind.Variable; name: string };
 export type Application = {
 	kind: Kind.Application;
@@ -19,6 +23,16 @@ export type Abstraction = {
 	variable: string;
 	body: Expression;
 };
+export type Addition = {
+	kind: Kind.Addition;
+	left: Expression;
+	right: Expression;
+};
+export type Pair = {
+	kind: Kind.Pair;
+	left: Expression;
+	right: Expression;
+};
 export type Let = {
 	kind: Kind.Let;
 	variable: string;
@@ -26,12 +40,14 @@ export type Let = {
 	body: Expression;
 };
 
-export type Expression = UnitLiteral | Variable | Application | Abstraction | Let;
+export type Expression = UnitLiteral | IntLiteral | Variable | Application | Abstraction | Addition | Pair | Let;
 
 export function expressionToString(expr: Expression): string {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
 			return "()";
+		case Kind.IntLiteral:
+			return expr.value.toString();
 		case Kind.Variable:
 			return expr.name;
 		case Kind.Application: {
@@ -52,6 +68,10 @@ export function expressionToString(expr: Expression): string {
 		}
 		case Kind.Abstraction:
 			return `λ${expr.variable}.${expressionToString(expr.body)}`;
+		case Kind.Addition:
+			return `${expressionToString(expr.left)} + ${expressionToString(expr.right)}`;
+		case Kind.Pair:
+			return `<${expressionToString(expr.left)}, ${expressionToString(expr.right)}>`;
 		case Kind.Let:
 			return `let ${expr.variable} = ${expressionToString(expr.expression)} in ${expressionToString(expr.body)}`;
 	}
@@ -60,10 +80,13 @@ export function expressionToString(expr: Expression): string {
 function shouldParenthesize(expr: Expression): boolean {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
+		case Kind.IntLiteral:
 		case Kind.Variable:
+		case Kind.Pair:
 			return false;
 		case Kind.Application:
 		case Kind.Abstraction:
+		case Kind.Addition:
 		case Kind.Let:
 			return true;
 	}

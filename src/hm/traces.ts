@@ -9,6 +9,8 @@ const onEnd = (traces: Trace[], trace: Trace) => {
 			return;
 		}
 		case "App":
+		case "Add":
+		case "Pair":
 		case "Let": {
 			const r = traces.pop()!;
 			const l = traces.pop()!;

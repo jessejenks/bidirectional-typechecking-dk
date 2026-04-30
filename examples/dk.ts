@@ -5,7 +5,7 @@ import { getTraceHandlers, traceToProofTree, traceToSimpleString } from "../src/
 
 const testCases: string[] = [
 	// "()",
-	// "(()) : 1",
+	// "(()) : Unit",
 	// "λx.x",
 	// "λx.((λy.y) x)",
 	// "λx.((λx.x) x)",
@@ -14,7 +14,7 @@ const testCases: string[] = [
 	// "λx:1.λy.x",
 	// "λx:(∀ α.α → α).x",
 	// "λx:∀ α.∀ β.β → 1 → α.x",
-	// "λx:∀ A.∀ B. B → 1 → A. x",
+	// "λx:∀ A.∀ B. B → Unit → A. x",
 	// "(λx.x) ()",
 	// "(λx.x) (λy.y)",
 	// "(λx.x) (λy:1.y)",
@@ -34,7 +34,7 @@ const testCases: string[] = [
 	// "λf.λx.f () x",
 	// "λf.λg. f (g f) ",
 	// "(λy:∀ α.∀ β.α → β → α. y () ())",
-	"λx:∀ α.α → α.(x x)",
+	// "λx:∀ α.α → α.(x x)",
 	// "(λx.(x x)) : (∀α.α → α) → (∀β.β → β)",
 	// "(λx.(x x)) : (∀T.T → T) → (∀T.T → T)",
 	// "(λf:∀ α.α → α. λx. f (f x))",
@@ -49,6 +49,17 @@ const testCases: string[] = [
 	// "(λf.λx.x) : ∀α.∀β.α → β → β", // ZERO == FALSE
 	// "(λn.λf.λx.f ((n f) x)) : ∀α.∀β.∀γ.((α → β) → γ → α) → (α → β) → γ → β", // SUCC
 	// "(λn.λf.λx.f ((n f) x)) (λf.λx.x)", // SUCC ZERO
+	// "1 + 2 + 3",
+	// "λn.n + 1",
+	// "let x = 1 in let y = 2 in <x, y>",
+	// "(λx.λy.λz.<x, <y + 2, z>>) 1",
+	// "(λx.λy.λz.z) : ∀α.∀β.∀γ.α → β → γ → γ",
+	// "<1, λx.x>",
+	// "(<1, λx.x>) : Int × (Unit → Unit)",
+	// "let x = <1, λx.x> in (x): Int × (Unit → Unit)",
+	// "let x = ((<1, λx.x>) : Int × ∀α.α → α) in (x) : Int × (Unit → Unit)",
+	// "let id = (λx.x) in <id 1, id ()>",
+	"let id : ∀α.α → α = (λx.x) in <id 1, id ()>",
 ];
 
 const getPaperContext = (logTraces: boolean, captureTraces: boolean) => {
@@ -64,7 +75,7 @@ const getPaperContext = (logTraces: boolean, captureTraces: boolean) => {
 };
 
 const runReferenceSynthesis = (expr: paper.ast.Expression) => {
-	const { context, getTrace } = getPaperContext(false, true);
+	const { context, getTrace } = getPaperContext(true, true);
 	Result.elim(
 		paper.dk.synthesize(context, expr),
 		({ type, ctx }) => {
@@ -72,11 +83,13 @@ const runReferenceSynthesis = (expr: paper.ast.Expression) => {
 				console.log(traceToSimpleString(getTrace()));
 			}
 			const appliedType = ctx.apply(type);
+			console.log(paper.ast.typeExpressionToString(appliedType));
 			const generalized = paper.ast.generalize(appliedType);
+			const miniscoped = paper.ast.miniscope(generalized);
 			if (expr.kind === paper.ast.Kind.AnnotatedExpression) {
-				console.log(`(${paper.ast.expressionToString(expr)}) : ${paper.ast.typeExpressionToString(generalized)}`);
+				console.log(`(${paper.ast.expressionToString(expr)}) : ${paper.ast.typeExpressionToString(miniscoped)}`);
 			} else {
-				console.log(`${paper.ast.expressionToString(expr)} : ${paper.ast.typeExpressionToString(generalized)}`);
+				console.log(`${paper.ast.expressionToString(expr)} : ${paper.ast.typeExpressionToString(miniscoped)}`);
 			}
 
 			console.log("evaluated", paper.ast.expressionToString(paper.evaluate.evaluate(expr)));
@@ -101,7 +114,7 @@ const getStratifiedTypeChecker = (logTraces: boolean, captureTraces: boolean) =>
 };
 
 const runStratifiedSynthesis = (expr: stratified.core.Expression) => {
-	const { checker, getTrace } = getStratifiedTypeChecker(false, true);
+	const { checker, getTrace } = getStratifiedTypeChecker(true, true);
 	Result.elim(
 		checker.synthesize(expr),
 		(type) => {

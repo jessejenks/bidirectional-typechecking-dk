@@ -10,6 +10,8 @@ function elaborateInner(termVariables: string[], expr: surface.Expression): core
 	switch (expr.kind) {
 		case surface.Kind.UnitLiteral:
 			return { kind: core.Kind.UnitLiteral };
+		case surface.Kind.IntLiteral:
+			return { kind: core.Kind.IntLiteral, value: expr.value };
 		case surface.Kind.Variable: {
 			const level = termVariables.lastIndexOf(expr.name);
 			if (level < 0) {
@@ -42,6 +44,18 @@ function elaborateInner(termVariables: string[], expr: surface.Expression): core
 			const annotation = elaborateType(expr.annotation);
 			return { kind: core.Kind.AnnotatedAbstraction, annotation, body };
 		}
+		case surface.Kind.Addition:
+			return {
+				kind: core.Kind.Addition,
+				left: elaborateInner(termVariables, expr.left),
+				right: elaborateInner(termVariables, expr.right),
+			};
+		case surface.Kind.Pair:
+			return {
+				kind: core.Kind.Pair,
+				left: elaborateInner(termVariables, expr.left),
+				right: elaborateInner(termVariables, expr.right),
+			};
 	}
 }
 
@@ -53,6 +67,8 @@ function elaborateTypeInner(typeVariables: string[], tp: surface.TypeExpression)
 	switch (tp.kind) {
 		case surface.Kind.UnitType:
 			return { kind: core.Kind.UnitType };
+		case surface.Kind.IntType:
+			return { kind: core.Kind.IntType };
 		case surface.Kind.TypeVariable: {
 			const level = typeVariables.lastIndexOf(tp.name);
 			if (level < 0) {
@@ -76,6 +92,12 @@ function elaborateTypeInner(typeVariables: string[], tp: surface.TypeExpression)
 				left: elaborateTypeInner(typeVariables, tp.left),
 				right: elaborateTypeInner(typeVariables, tp.right),
 			};
+		case surface.Kind.ProductType:
+			return {
+				kind: core.Kind.ProductType,
+				left: elaborateTypeInner(typeVariables, tp.left),
+				right: elaborateTypeInner(typeVariables, tp.right),
+			};
 	}
 }
 
@@ -87,6 +109,8 @@ function unelaborateInner(depth: number, expr: core.Expression): surface.Express
 	switch (expr.kind) {
 		case core.Kind.UnitLiteral:
 			return { kind: surface.Kind.UnitLiteral };
+		case core.Kind.IntLiteral:
+			return { kind: surface.Kind.IntLiteral, value: expr.value };
 		case core.Kind.BoundVariable:
 			return { kind: surface.Kind.Variable, name: createVariableName(depth - 1 - expr.index) };
 		case core.Kind.FreeVariable:
@@ -108,6 +132,10 @@ function unelaborateInner(depth: number, expr: core.Expression): surface.Express
 				annotation: unelaborateType(expr.annotation),
 				body: unelaborateInner(depth + 1, expr.body),
 			};
+		case core.Kind.Addition:
+			return { kind: surface.Kind.Addition, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
+		case core.Kind.Pair:
+			return { kind: surface.Kind.Pair, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
 	}
 }
 
@@ -119,6 +147,8 @@ function unelaborateTypeInner(depth: number, tp: core.TypeExpression): surface.T
 	switch (tp.kind) {
 		case core.Kind.UnitType:
 			return { kind: surface.Kind.UnitType };
+		case core.Kind.IntType:
+			return { kind: surface.Kind.IntType };
 		case core.Kind.BoundTypeVariable:
 			return { kind: surface.Kind.TypeVariable, name: createTypeVariableName(tp.level) };
 		case core.Kind.FreeTypeVariable:
@@ -133,5 +163,7 @@ function unelaborateTypeInner(depth: number, tp: core.TypeExpression): surface.T
 			};
 		case core.Kind.ArrowType:
 			return { kind: surface.Kind.ArrowType, left: unelaborateTypeInner(depth, tp.left), right: unelaborateTypeInner(depth, tp.right) };
+		case core.Kind.ProductType:
+			return { kind: surface.Kind.ProductType, left: unelaborateTypeInner(depth, tp.left), right: unelaborateTypeInner(depth, tp.right) };
 	}
 }

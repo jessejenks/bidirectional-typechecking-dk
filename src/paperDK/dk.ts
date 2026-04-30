@@ -1,6 +1,7 @@
 import { Result } from "../utils/result";
 import {
 	Abstraction,
+	Addition,
 	AnnotatedAbstraction,
 	AnnotatedExpression,
 	Application,
@@ -8,9 +9,12 @@ import {
 	ExistentialTypeVariable,
 	Expression,
 	expressionToString,
+	IntLiteral,
 	isMonotype,
 	Kind,
 	occursCheck,
+	Pair,
+	ProductType,
 	substituteType,
 	TypeExpression,
 	typeExpressionToString,
@@ -34,6 +38,12 @@ export function isSubtype(ctx: Context, left: TypeExpression, right: TypeExpress
 		ctx.leafRule("<:Unit", typeExpressionToString(left), "<:", typeExpressionToString(right));
 		return Result.Ok(ctx);
 	}
+	// EXTENSION
+	// <:Int
+	if (left.kind === Kind.IntType && right.kind === Kind.IntType) {
+		ctx.leafRule("<:Int", typeExpressionToString(left), "<:", typeExpressionToString(right));
+		return Result.Ok(ctx);
+	}
 	// <:ExVar
 	if (left.kind === Kind.ExistentialTypeVariable && right.kind === Kind.ExistentialTypeVariable && left.id === right.id) {
 		ctx.leafRule("<:ExVar", typeExpressionToString(left), "<:", typeExpressionToString(right));
@@ -46,6 +56,18 @@ export function isSubtype(ctx: Context, left: TypeExpression, right: TypeExpress
 		return Result.andThen(isSubtype(ctx, right.left, left.left), (ctx) =>
 			Result.map(isSubtype(ctx, ctx.apply(left.right), ctx.apply(right.right)), (ctx) =>
 				ctx.endRule("<:→", typeExpressionToString(left), "<:", typeExpressionToString(right)),
+			),
+		);
+	}
+
+	// EXTENSION
+	// <:×
+	if (left.kind === Kind.ProductType && right.kind === Kind.ProductType) {
+		ctx.startRule("<:×", typeExpressionToString(left), "<:", typeExpressionToString(right));
+		// no contravariance
+		return Result.andThen(isSubtype(ctx, left.left, right.left), (ctx) =>
+			Result.map(isSubtype(ctx, ctx.apply(left.right), ctx.apply(right.right)), (ctx) =>
+				ctx.endRule("<:×", typeExpressionToString(left), "<:", typeExpressionToString(right)),
 			),
 		);
 	}
@@ -146,6 +168,38 @@ export function instantiateLeft(ctx: Context, existential: ExistentialTypeVariab
 		);
 	}
 
+	// InstLProd
+	if (tp.kind === Kind.ProductType) {
+		ctx.startRule("InstLProd", typeExpressionToString(existential), ":≤", typeExpressionToString(tp));
+		const alpha2 = ctx.newExistential();
+		const alpha1 = ctx.newExistential();
+		ctx.replaceExistential(
+			existential,
+			{
+				kind: ContextItemKind.Existential,
+				id: alpha2.id,
+			},
+			{
+				kind: ContextItemKind.Existential,
+				id: alpha1.id,
+			},
+			{
+				kind: ContextItemKind.SolvedExistential,
+				left: existential.id,
+				right: {
+					kind: Kind.ProductType,
+					left: alpha1,
+					right: alpha2,
+				},
+			},
+		);
+		return Result.andThen(instantiateRight(ctx, tp.left, alpha1), (ctx) =>
+			Result.map(instantiateLeft(ctx, alpha2, ctx.apply(tp.right)), (ctx) =>
+				ctx.endRule("InstLProd", typeExpressionToString(existential), ":≤", typeExpressionToString(tp)),
+			),
+		);
+	}
+
 	// InstLAllR
 	if (tp.kind === Kind.UniversalType) {
 		ctx.startRule("InstLAllR", typeExpressionToString(existential), ":≤", typeExpressionToString(tp));
@@ -208,6 +262,39 @@ export function instantiateRight(ctx: Context, tp: TypeExpression, existential: 
 		);
 	}
 
+	// EXTENSION
+	// InstRProd
+	if (tp.kind === Kind.ProductType) {
+		ctx.startRule("InstRProd", typeExpressionToString(tp), "≤:", typeExpressionToString(existential));
+		const alpha2 = ctx.newExistential();
+		const alpha1 = ctx.newExistential();
+		ctx.replaceExistential(
+			existential,
+			{
+				kind: ContextItemKind.Existential,
+				id: alpha2.id,
+			},
+			{
+				kind: ContextItemKind.Existential,
+				id: alpha1.id,
+			},
+			{
+				kind: ContextItemKind.SolvedExistential,
+				left: existential.id,
+				right: {
+					kind: Kind.ProductType,
+					left: alpha1,
+					right: alpha2,
+				},
+			},
+		);
+		return Result.andThen(instantiateLeft(ctx, alpha1, tp.left), (ctx) =>
+			Result.map(instantiateRight(ctx, ctx.apply(tp.right), alpha2), (ctx) =>
+				ctx.endRule("InstRProd", typeExpressionToString(tp), "≤:", typeExpressionToString(existential)),
+			),
+		);
+	}
+
 	// InstRAllL
 	if (tp.kind === Kind.UniversalType) {
 		ctx.startRule("InstRAllL", typeExpressionToString(tp), "≤:", typeExpressionToString(existential));
@@ -226,6 +313,8 @@ export function synthesize(ctx: Context, expr: Expression): TypeSynthesis {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
 			return ruleUnitIntroSynth(ctx);
+		case Kind.IntLiteral:
+			return ruleIntIntroSynth(ctx, expr);
 		case Kind.Variable:
 			return ruleVar(ctx, expr);
 		case Kind.Abstraction:
@@ -236,12 +325,19 @@ export function synthesize(ctx: Context, expr: Expression): TypeSynthesis {
 			return ruleAnno(ctx, expr);
 		case Kind.AnnotatedAbstraction:
 			return ruleAnnotatedArrowIntroSynth(ctx, expr);
+		case Kind.Addition:
+			return ruleAdditionSynth(ctx, expr);
+		case Kind.Pair:
+			return rulePairSynth(ctx, expr);
 	}
 }
 
 export function check(ctx: Context, expr: Expression, tp: TypeExpression): TypeCheck {
 	if (expr.kind === Kind.UnitLiteral && tp.kind === Kind.UnitType) {
 		return ruleUnitIntro(ctx);
+	}
+	if (expr.kind === Kind.IntLiteral && tp.kind === Kind.IntType) {
+		return ruleIntIntro(ctx, expr);
 	}
 	if (tp.kind === Kind.UniversalType) {
 		return ruleForallIntro(ctx, expr, tp);
@@ -251,6 +347,9 @@ export function check(ctx: Context, expr: Expression, tp: TypeExpression): TypeC
 	}
 	if (expr.kind === Kind.AnnotatedAbstraction && tp.kind === Kind.ArrowType) {
 		return ruleAnnotatedArrowIntro(ctx, expr, tp);
+	}
+	if (expr.kind === Kind.Pair && tp.kind === Kind.ProductType) {
+		return rulePair(ctx, expr, tp);
 	}
 	return ruleSub(ctx, expr, tp);
 }
@@ -321,7 +420,7 @@ export const ruleAnno = (ctx: Context, annotated: AnnotatedExpression): TypeSynt
  * Γ ⊢ () ⇐ 1 ⊣ Γ
  * ```
  */
-export const ruleUnitIntro = (ctx: Context): TypeCheck => Result.Ok(ctx.leafRule("1I", "()", "⇐", "1"));
+export const ruleUnitIntro = (ctx: Context): TypeCheck => Result.Ok(ctx.leafRule("1I", "()", "⇐", "Unit"));
 
 /**
  * ```
@@ -330,8 +429,30 @@ export const ruleUnitIntro = (ctx: Context): TypeCheck => Result.Ok(ctx.leafRule
  * ```
  */
 export const ruleUnitIntroSynth = (ctx: Context): TypeSynthesis => {
-	ctx.leafRule("1I⇒", "()", "⇒", "1");
+	ctx.leafRule("1I⇒", "()", "⇒", "Unit");
 	return Result.Ok({ type: { kind: Kind.UnitType }, ctx });
+};
+
+/**
+ * EXTENSION
+ * ```
+ * ───────────────
+ * Γ ⊢ n ⇐ Int ⊣ Γ
+ * ```
+ */
+export const ruleIntIntro = (ctx: Context, expr: IntLiteral): TypeCheck =>
+	Result.Ok(ctx.leafRule("intI", expressionToString(expr), "⇐", "Int"));
+
+/**
+ * EXTENSION
+ * ```
+ * ───────────────
+ * Γ ⊢ n ⇒ Int ⊣ Γ
+ * ```
+ */
+export const ruleIntIntroSynth = (ctx: Context, expr: IntLiteral): TypeSynthesis => {
+	ctx.leafRule("intI⇒", expressionToString(expr), "⇒", "Int");
+	return Result.Ok({ type: { kind: Kind.IntType }, ctx });
 };
 
 /**
@@ -474,7 +595,7 @@ export const ruleArrowApp = (ctx: Context, arrow: ArrowType, expr: Expression): 
 };
 
 /**
- * CUSTOM
+ * EXTENSION
  * allow annotations on parameters
  * ```
  * Γ,β̂,x:A ⊢ e ⇐ β̂ ⊣ Δ,x:A,Θ
@@ -504,7 +625,7 @@ export const ruleAnnotatedArrowIntroSynth = (ctx: Context, expr: AnnotatedAbstra
 };
 
 /**
- * CUSTOM
+ * EXTENSION
  * allow annotations on parameters
  * ```
  * Γ ⊢ A <: T ⊣ Θ  Θ,x:T ⊢ e ⇐ B ⊣ Δ,x:T,Θ'
@@ -520,4 +641,60 @@ export const ruleAnnotatedArrowIntro = (ctx: Context, expr: AnnotatedAbstraction
 			ctx.dropAfterBinding(expr.variable).endRule("Anno→I", expressionToString(expr), "⇐", typeExpressionToString(tp)),
 		);
 	});
+};
+
+/**
+ * EXTENSION
+ * ```
+ * Γ ⊢ e1 ⇐ Int ⊣ Θ  Θ ⊢ e2 ⇐ Int ⊣ Δ
+ * ──────────────────────────────────────
+ *       Γ ⊢ e1 + e2 ⇒ Int ⊣ Δ
+ * ```
+ */
+export const ruleAdditionSynth = (ctx: Context, expr: Addition): TypeSynthesis => {
+	ctx.startRule("Add⇒", expressionToString(expr), "⇒", "?");
+	const intType: TypeExpression = { kind: Kind.IntType };
+	return Result.andThen(check(ctx, expr.left, intType), (ctx) =>
+		Result.map(check(ctx, expr.right, intType), (ctx) => {
+			ctx.endRule("Add⇒", expressionToString(expr), "⇒", typeExpressionToString(intType));
+			return { ctx, type: intType };
+		}),
+	);
+};
+
+/**
+ * EXTENSION
+ * ```
+ * Γ ⊢ e1 ⇒ A ⊣ Θ  Θ ⊢ e2 ⇒ B ⊣ Δ
+ * ───────────────────────────────
+ *    Γ ⊢ <e1, e2> ⇒ A × B ⊣ Δ
+ * ```
+ */
+export const rulePairSynth = (ctx: Context, expr: Pair): TypeSynthesis => {
+	ctx.startRule("Pair⇒", expressionToString(expr), "⇒", "?");
+	return Result.andThen(synthesize(ctx, expr.left), ({ type: A, ctx }) =>
+		Result.map(synthesize(ctx, expr.right), ({ type: B, ctx }) => {
+			const type: TypeExpression = { kind: Kind.ProductType, left: A, right: B };
+			ctx.endRule("Pair⇒", expressionToString(expr), "⇒", typeExpressionToString(type));
+			return { type, ctx };
+		}),
+	);
+};
+
+/**
+ * EXTENSION
+ * ```
+ * Γ ⊢ e1 ⇐ A ⊣ Θ  Θ ⊢ e2 ⇐ B ⊣ Δ
+ * ───────────────────────────────
+ *    Γ ⊢ <e1, e2> ⇐ A × B ⊣ Δ
+ * ```
+ */
+export const rulePair = (ctx: Context, expr: Pair, tp: ProductType): TypeCheck => {
+	ctx.startRule("Pair", expressionToString(expr), "⇐", typeExpressionToString(tp));
+	return Result.andThen(check(ctx, expr.left, tp.left), (ctx) =>
+		Result.map(check(ctx, expr.right, tp.right), (ctx) => {
+			ctx.endRule("Pair", expressionToString(expr), "⇐", typeExpressionToString(tp));
+			return ctx;
+		}),
+	);
 };

@@ -10,6 +10,8 @@ function elaborateInner(termVariables: string[], expr: surface.Expression): core
 	switch (expr.kind) {
 		case surface.Kind.UnitLiteral:
 			return { kind: core.Kind.UnitLiteral };
+		case surface.Kind.IntLiteral:
+			return { kind: core.Kind.IntLiteral, value: expr.value };
 		case surface.Kind.Variable: {
 			const level = termVariables.lastIndexOf(expr.name);
 			if (level < 0) {
@@ -39,6 +41,18 @@ function elaborateInner(termVariables: string[], expr: surface.Expression): core
 				expression,
 				body,
 			};
+		case surface.Kind.Addition:
+			return {
+				kind: core.Kind.Addition,
+				left: elaborateInner(termVariables, expr.left),
+				right: elaborateInner(termVariables, expr.right),
+			};
+		case surface.Kind.Pair:
+			return {
+				kind: core.Kind.Pair,
+				left: elaborateInner(termVariables, expr.left),
+				right: elaborateInner(termVariables, expr.right),
+			};
 	}
 }
 
@@ -50,6 +64,8 @@ function unelaborateInner(depth: number, expr: core.Expression): surface.Express
 	switch (expr.kind) {
 		case core.Kind.UnitLiteral:
 			return { kind: surface.Kind.UnitLiteral };
+		case core.Kind.IntLiteral:
+			return { kind: surface.Kind.IntLiteral, value: expr.value };
 		case core.Kind.BoundVariable:
 			return { kind: surface.Kind.Variable, name: createVariableName(depth - 1 - expr.index) };
 		case core.Kind.FreeVariable:
@@ -58,6 +74,10 @@ function unelaborateInner(depth: number, expr: core.Expression): surface.Express
 			return { kind: surface.Kind.Abstraction, variable: createVariableName(depth), body: unelaborateInner(depth + 1, expr.body) };
 		case core.Kind.Application:
 			return { kind: surface.Kind.Application, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
+		case core.Kind.Addition:
+			return { kind: surface.Kind.Addition, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
+		case core.Kind.Pair:
+			return { kind: surface.Kind.Pair, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
 		case core.Kind.Let:
 			return {
 				kind: surface.Kind.Let,

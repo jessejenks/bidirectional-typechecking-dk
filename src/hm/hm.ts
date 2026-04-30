@@ -3,13 +3,16 @@ import { Result } from "../utils/result";
 import type { OnTrace } from "../utils/traces";
 import {
 	Abstraction,
+	Addition,
 	Application,
 	BoundVariable,
 	Expression,
 	expressionToString,
 	FreeVariable,
+	IntLiteral,
 	Kind,
 	Let,
+	Pair,
 	TypeExpression,
 	typeExpressionToString,
 	TypeKind,
@@ -40,11 +43,13 @@ export function schemeToString(sch: Scheme) {
 function maxTypeVariableLevel(tp: TypeExpression): number {
 	switch (tp.kind) {
 		case TypeKind.UnitType:
+		case TypeKind.IntType:
 		case TypeKind.UnificationVariable:
 			return -1;
 		case TypeKind.TypeVariable:
 			return tp.level;
 		case TypeKind.ArrowType:
+		case TypeKind.ProductType:
 			return Math.max(maxTypeVariableLevel(tp.left), maxTypeVariableLevel(tp.right));
 	}
 }
@@ -91,6 +96,8 @@ export class TypeChecker {
 		switch (expr.kind) {
 			case Kind.UnitLiteral:
 				return this.ruleUnit(expr);
+			case Kind.IntLiteral:
+				return this.ruleInt(expr);
 			case Kind.BoundVariable:
 				return this.ruleVar(expr);
 			case Kind.FreeVariable:
@@ -99,6 +106,10 @@ export class TypeChecker {
 				return this.ruleApp(expr);
 			case Kind.Abstraction:
 				return this.ruleAbs(expr);
+			case Kind.Addition:
+				return this.ruleAddition(expr);
+			case Kind.Pair:
+				return this.rulePair(expr);
 			case Kind.Let:
 				return this.ruleLet(expr);
 		}
@@ -111,6 +122,16 @@ export class TypeChecker {
 	protected ruleUnit(expr: UnitLiteral): TypeInference {
 		const tp: TypeExpression = { kind: TypeKind.UnitType };
 		this.leafRule("Unit", expressionToString(expr), ":", typeExpressionToString(tp));
+		return Result.Ok(tp);
+	}
+
+	/**
+	 * ─────────── Int
+	 * Γ ⊢ n : Int
+	 */
+	protected ruleInt(expr: IntLiteral): TypeInference {
+		const tp: TypeExpression = { kind: TypeKind.IntType };
+		this.leafRule("Int", expressionToString(expr), ":", typeExpressionToString(tp));
 		return Result.Ok(tp);
 	}
 
@@ -173,6 +194,42 @@ export class TypeChecker {
 	}
 
 	/**
+	 * Γ ⊢ n : τ    unify(τ, Int)    Γ ⊢ m : τ'    unify(τ', Int)
+	 * ────────────────────────────────────────────────────────── Add
+	 *                       Γ ⊢ n + m : Int
+	 */
+	protected ruleAddition(expr: Addition): TypeInference {
+		this.startRule("Add", expressionToString(expr), ":", "?");
+		const intType: TypeExpression = { kind: TypeKind.IntType };
+		return Result.andThen(this.algorithmJ(expr.left), (tau) =>
+			Result.andThen(this.unify(tau, intType), () =>
+				Result.andThen(this.algorithmJ(expr.right), (tauprime) =>
+					Result.map(this.unify(tauprime, intType), (): TypeExpression => {
+						this.endRule("Add", expressionToString(expr), ":", typeExpressionToString(intType));
+						return intType;
+					}),
+				),
+			),
+		);
+	}
+
+	/**
+	 * Γ ⊢ e1 : A    Γ ⊢ e2 : B
+	 * ───────────────────────── Pair
+	 *   Γ ⊢ <e1, e2> : A × B
+	 */
+	protected rulePair(expr: Pair): TypeInference {
+		this.startRule("Pair", expressionToString(expr), ":", "?");
+		return Result.andThen(this.algorithmJ(expr.left), (left) =>
+			Result.map(this.algorithmJ(expr.right), (right) => {
+				const tp: TypeExpression = { kind: TypeKind.ProductType, left, right };
+				this.endRule("Pair", expressionToString(expr), ":", typeExpressionToString(tp));
+				return tp;
+			}),
+		);
+	}
+
+	/**
 	 * Γ ⊢ e' : τ'    Γ, x:gen(Γ,τ') ⊢ e : τ
 	 * ────────────────────────────────────── Let
 	 *       Γ ⊢ let x = e' in e : τ
@@ -207,7 +264,11 @@ export class TypeChecker {
 		left = this.resolve(left);
 		right = this.resolve(right);
 
-		if (left === right || (left.kind === TypeKind.UnitType && right.kind === TypeKind.UnitType)) {
+		if (
+			left === right ||
+			(left.kind === TypeKind.UnitType && right.kind === TypeKind.UnitType) ||
+			(left.kind === TypeKind.IntType && right.kind === TypeKind.IntType)
+		) {
 			return Result.Ok(null);
 		}
 
@@ -243,6 +304,9 @@ export class TypeChecker {
 		if (left.kind === TypeKind.ArrowType && right.kind === TypeKind.ArrowType) {
 			return Result.andThen(this.unify(left.left, right.left), () => this.unify(left.right, right.right));
 		}
+		if (left.kind === TypeKind.ProductType && right.kind === TypeKind.ProductType) {
+			return Result.andThen(this.unify(left.left, right.left), () => this.unify(left.right, right.right));
+		}
 		return Result.Err(`Could not unify ${typeExpressionToString(left)} with ${typeExpressionToString(right)}`);
 	}
 
@@ -255,12 +319,15 @@ export class TypeChecker {
 		const instantiateInner = (tp: TypeExpression): TypeExpression => {
 			switch (tp.kind) {
 				case TypeKind.UnitType:
+				case TypeKind.IntType:
 				case TypeKind.UnificationVariable:
 					return tp;
 				case TypeKind.TypeVariable:
 					return fresh[tp.level];
 				case TypeKind.ArrowType:
 					return { kind: TypeKind.ArrowType, left: instantiateInner(tp.left), right: instantiateInner(tp.right) };
+				case TypeKind.ProductType:
+					return { kind: TypeKind.ProductType, left: instantiateInner(tp.left), right: instantiateInner(tp.right) };
 			}
 		};
 		return instantiateInner(sch.type);
@@ -273,6 +340,7 @@ export class TypeChecker {
 			tp = this.resolve(tp);
 			switch (tp.kind) {
 				case TypeKind.UnitType:
+				case TypeKind.IntType:
 				case TypeKind.TypeVariable:
 					return tp;
 				case TypeKind.UnificationVariable:
@@ -285,6 +353,8 @@ export class TypeChecker {
 					return tp;
 				case TypeKind.ArrowType:
 					return { kind: TypeKind.ArrowType, left: generalizeInner(tp.left), right: generalizeInner(tp.right) };
+				case TypeKind.ProductType:
+					return { kind: TypeKind.ProductType, left: generalizeInner(tp.left), right: generalizeInner(tp.right) };
 			}
 		};
 		const generalized = generalizeInner(tp);
@@ -300,6 +370,7 @@ export class TypeChecker {
 		tp = this.resolve(tp);
 		switch (tp.kind) {
 			case TypeKind.UnitType:
+			case TypeKind.IntType:
 			case TypeKind.TypeVariable:
 				return;
 			case TypeKind.UnificationVariable:
@@ -308,6 +379,7 @@ export class TypeChecker {
 				}
 				return;
 			case TypeKind.ArrowType:
+			case TypeKind.ProductType:
 				this.lowerLevels(tp.left, maxLevel);
 				this.lowerLevels(tp.right, maxLevel);
 				return;
@@ -317,11 +389,13 @@ export class TypeChecker {
 	protected occurs(id: number, tp: TypeExpression): boolean {
 		switch (tp.kind) {
 			case TypeKind.UnitType:
+			case TypeKind.IntType:
 			case TypeKind.TypeVariable:
 				return false;
 			case TypeKind.UnificationVariable:
 				return id === tp.id;
 			case TypeKind.ArrowType:
+			case TypeKind.ProductType:
 				return this.occurs(id, tp.left) || this.occurs(id, tp.right);
 		}
 	}

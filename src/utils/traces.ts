@@ -107,17 +107,24 @@ const onEnd = (traces: Trace[], trace: Trace) => {
 			return;
 		}
 		case "<:→":
+		case "<:×":
 		case "InstLArr":
+		case "InstLProd":
 		case "InstRArr":
+		case "InstRProd":
 		case "Sub":
 		case "Anno→I":
-		case "→E": {
+		case "→E":
+		case "Add⇒":
+		case "Pair⇒":
+		case "Pair": {
 			const r = traces.pop()!;
 			const l = traces.pop()!;
 			trace.children.push(l, r);
 			traces.push(trace);
 			return;
 		}
+
 		default:
 			traces.push(trace);
 	}

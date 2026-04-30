@@ -3,17 +3,22 @@ import { createExistentialVariableName, createTypeVariableName } from "../utils/
 export const enum Kind {
 	// Terms
 	UnitLiteral,
+	IntLiteral,
 	Variable,
 	Abstraction,
 	Application,
 	AnnotatedExpression,
 	AnnotatedAbstraction,
+	Addition,
+	Pair,
 	// Types
 	UnitType,
+	IntType,
 	TypeVariable,
 	ExistentialTypeVariable,
 	UniversalType,
 	ArrowType,
+	ProductType,
 }
 
 export type UnitLiteral = { kind: Kind.UnitLiteral };
@@ -34,20 +39,42 @@ export type AnnotatedExpression = {
 	annotation: TypeExpression;
 };
 
-// Extension
+// Extensions
+export type IntLiteral = { kind: Kind.IntLiteral; value: number };
 export type AnnotatedAbstraction = {
 	kind: Kind.AnnotatedAbstraction;
 	variable: string;
 	annotation: TypeExpression;
 	body: Expression;
 };
+export type Addition = {
+	kind: Kind.Addition;
+	left: Expression;
+	right: Expression;
+};
+export type Pair = {
+	kind: Kind.Pair;
+	left: Expression;
+	right: Expression;
+};
 
-export type Expression = UnitLiteral | Variable | Abstraction | Application | AnnotatedExpression | AnnotatedAbstraction;
+export type Expression =
+	| UnitLiteral
+	| IntLiteral
+	| Variable
+	| Abstraction
+	| Application
+	| AnnotatedExpression
+	| AnnotatedAbstraction
+	| Addition
+	| Pair;
 
 export function expressionToString(expr: Expression): string {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
 			return "()";
+		case Kind.IntLiteral:
+			return expr.value.toString();
 		case Kind.Variable:
 			return expr.name;
 		case Kind.Abstraction:
@@ -70,18 +97,25 @@ export function expressionToString(expr: Expression): string {
 			return `(${expressionToString(expr.body)}) : ${typeExpressionToString(expr.annotation)}`;
 		case Kind.AnnotatedAbstraction:
 			return `λ${expr.variable}:${typeExpressionToString(expr.annotation)}.${expressionToString(expr.body)}`;
+		case Kind.Addition:
+			return `${expressionToString(expr.left)} + ${expressionToString(expr.right)}`;
+		case Kind.Pair:
+			return `<${expressionToString(expr.left)}, ${expressionToString(expr.right)}>`;
 	}
 }
 
 function shouldParenthesize(expr: Expression): boolean {
 	switch (expr.kind) {
 		case Kind.UnitLiteral:
+		case Kind.IntLiteral:
 		case Kind.Variable:
+		case Kind.Pair:
 			return false;
 		case Kind.Abstraction:
 		case Kind.Application:
 		case Kind.AnnotatedExpression:
 		case Kind.AnnotatedAbstraction:
+		case Kind.Addition:
 			return true;
 	}
 }
@@ -103,14 +137,28 @@ export type ArrowType = {
 	right: TypeExpression;
 };
 
-export type TypeExpression = UnitType | TypeVariable | ExistentialTypeVariable | UniversalType | ArrowType;
+// Extensions
+export type IntType = { kind: Kind.IntType };
+export type ProductType = {
+	kind: Kind.ProductType;
+	left: TypeExpression;
+	right: TypeExpression;
+};
+
+export type TypeExpression = UnitType | IntType | TypeVariable | ExistentialTypeVariable | UniversalType | ArrowType | ProductType;
 
 export type Monotype =
 	| UnitType
+	| IntType
 	| TypeVariable
 	| ExistentialTypeVariable
 	| {
 			kind: Kind.ArrowType;
+			left: Monotype;
+			right: Monotype;
+	  }
+	| {
+			kind: Kind.ProductType;
 			left: Monotype;
 			right: Monotype;
 	  };
@@ -118,12 +166,14 @@ export type Monotype =
 export function isMonotype(tp: TypeExpression): tp is Monotype {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.TypeVariable:
 		case Kind.ExistentialTypeVariable:
 			return true;
 		case Kind.UniversalType:
 			return false;
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			return isMonotype(tp.left) && isMonotype(tp.right);
 	}
 }
@@ -131,7 +181,9 @@ export function isMonotype(tp: TypeExpression): tp is Monotype {
 export function typeExpressionToString(tp: TypeExpression): string {
 	switch (tp.kind) {
 		case Kind.UnitType:
-			return "1";
+			return "Unit";
+		case Kind.IntType:
+			return "Int";
 		case Kind.TypeVariable:
 			return tp.name;
 		case Kind.ExistentialTypeVariable:
@@ -143,12 +195,27 @@ export function typeExpressionToString(tp: TypeExpression): string {
 				return `(${typeExpressionToString(tp.left)}) → ${typeExpressionToString(tp.right)}`;
 			}
 			return `${typeExpressionToString(tp.left)} → ${typeExpressionToString(tp.right)}`;
+		case Kind.ProductType: {
+			const parenLeft = tp.left.kind === Kind.ArrowType;
+			const parenRight = tp.right.kind === Kind.ArrowType;
+			if (parenLeft && parenRight) {
+				return `(${typeExpressionToString(tp.left)}) × (${typeExpressionToString(tp.right)})`;
+			}
+			if (parenLeft) {
+				return `(${typeExpressionToString(tp.left)}) × ${typeExpressionToString(tp.right)}`;
+			}
+			if (parenRight) {
+				return `${typeExpressionToString(tp.left)} × (${typeExpressionToString(tp.right)})`;
+			}
+			return `${typeExpressionToString(tp.left)} × ${typeExpressionToString(tp.right)}`;
+		}
 	}
 }
 
 export function collectFreeExistentialTypeVariables(tp: TypeExpression, free: Set<number>) {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.TypeVariable:
 			return;
 		case Kind.ExistentialTypeVariable:
@@ -158,6 +225,7 @@ export function collectFreeExistentialTypeVariables(tp: TypeExpression, free: Se
 			collectFreeExistentialTypeVariables(tp.body, free);
 			return;
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			collectFreeExistentialTypeVariables(tp.left, free);
 			collectFreeExistentialTypeVariables(tp.right, free);
 			return;
@@ -167,6 +235,7 @@ export function collectFreeExistentialTypeVariables(tp: TypeExpression, free: Se
 export function collectFreeTypeVariables(tp: TypeExpression, free: Set<string>) {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.ExistentialTypeVariable:
 			return;
 		case Kind.TypeVariable:
@@ -176,6 +245,7 @@ export function collectFreeTypeVariables(tp: TypeExpression, free: Set<string>) 
 			collectFreeTypeVariables(tp.body, free);
 			return;
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			collectFreeTypeVariables(tp.left, free);
 			collectFreeTypeVariables(tp.right, free);
 			return;
@@ -185,6 +255,7 @@ export function collectFreeTypeVariables(tp: TypeExpression, free: Set<string>) 
 export function collectBoundTypeVariables(tp: TypeExpression, bound: Set<string>) {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.TypeVariable:
 		case Kind.ExistentialTypeVariable:
 			return;
@@ -193,6 +264,7 @@ export function collectBoundTypeVariables(tp: TypeExpression, bound: Set<string>
 			collectBoundTypeVariables(tp.body, bound);
 			return;
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			collectBoundTypeVariables(tp.left, bound);
 			collectBoundTypeVariables(tp.right, bound);
 			return;
@@ -202,6 +274,7 @@ export function collectBoundTypeVariables(tp: TypeExpression, bound: Set<string>
 export function substituteType(name: string, withType: TypeExpression, inType: TypeExpression): TypeExpression {
 	switch (inType.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.ExistentialTypeVariable:
 			return inType;
 		case Kind.TypeVariable:
@@ -224,12 +297,19 @@ export function substituteType(name: string, withType: TypeExpression, inType: T
 				left: substituteType(name, withType, inType.left),
 				right: substituteType(name, withType, inType.right),
 			};
+		case Kind.ProductType:
+			return {
+				kind: Kind.ProductType,
+				left: substituteType(name, withType, inType.left),
+				right: substituteType(name, withType, inType.right),
+			};
 	}
 }
 
 export function occursCheck(existential: ExistentialTypeVariable, tp: TypeExpression): boolean {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.TypeVariable:
 			return false;
 		case Kind.ExistentialTypeVariable:
@@ -237,6 +317,7 @@ export function occursCheck(existential: ExistentialTypeVariable, tp: TypeExpres
 		case Kind.UniversalType:
 			return occursCheck(existential, tp.body);
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			return occursCheck(existential, tp.left) || occursCheck(existential, tp.right);
 	}
 }
@@ -276,6 +357,7 @@ export function generalize(tp: TypeExpression): TypeExpression {
 function generalizeInner(tp: TypeExpression, nameMap: Map<number, string>): TypeExpression {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 		case Kind.TypeVariable:
 			return tp;
 		case Kind.ExistentialTypeVariable:
@@ -292,6 +374,12 @@ function generalizeInner(tp: TypeExpression, nameMap: Map<number, string>): Type
 		case Kind.ArrowType:
 			return {
 				kind: Kind.ArrowType,
+				left: generalizeInner(tp.left, nameMap),
+				right: generalizeInner(tp.right, nameMap),
+			};
+		case Kind.ProductType:
+			return {
+				kind: Kind.ProductType,
 				left: generalizeInner(tp.left, nameMap),
 				right: generalizeInner(tp.right, nameMap),
 			};
@@ -334,12 +422,62 @@ export function miniscope(tp: TypeExpression): TypeExpression {
 		});
 	}
 
+	if (body.kind === Kind.ProductType && !(body.left.kind === Kind.TypeVariable && body.right.kind === Kind.TypeVariable)) {
+		const bothVars: string[] = [];
+		const leftVars: string[] = [];
+		const rightVars: string[] = [];
+
+		for (let i = 0; i < vars.length; i++) {
+			const inLeft = appearsIn(vars[i], body.left);
+			const inRight = appearsIn(vars[i], body.right);
+			if (inLeft && inRight) {
+				bothVars.push(vars[i]);
+			} else if (inLeft) {
+				leftVars.push(vars[i]);
+			} else {
+				rightVars.push(vars[i]);
+			}
+		}
+
+		if (body.left.kind === Kind.TypeVariable) {
+			let right = rightVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), body.right);
+			right = miniscope(right);
+			body = leftVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), {
+				kind: Kind.ProductType,
+				left: body.left,
+				right,
+			});
+		} else if (body.right.kind === Kind.TypeVariable) {
+			let left = leftVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), body.left);
+			left = miniscope(left);
+			body = rightVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), {
+				kind: Kind.ProductType,
+				left,
+				right: body.right,
+			});
+		} else {
+			let left = leftVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), body.left);
+			left = miniscope(left);
+
+			let right = rightVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), body.right);
+			right = miniscope(right);
+
+			body = {
+				kind: Kind.ProductType,
+				left,
+				right,
+			};
+		}
+		return bothVars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), body);
+	}
+
 	return vars.reduceRight((body, variable): TypeExpression => ({ kind: Kind.UniversalType, variable, body }), miniscope(body));
 }
 
 function appearsIn(name: string, tp: TypeExpression): boolean {
 	switch (tp.kind) {
 		case Kind.UnitType:
+		case Kind.IntType:
 			return false;
 		case Kind.TypeVariable:
 			return name === tp.name;
@@ -351,6 +489,7 @@ function appearsIn(name: string, tp: TypeExpression): boolean {
 			}
 			return appearsIn(name, tp.body);
 		case Kind.ArrowType:
+		case Kind.ProductType:
 			return appearsIn(name, tp.left) || appearsIn(name, tp.right);
 	}
 }

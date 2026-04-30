@@ -2,22 +2,49 @@ import { Result as LibResult, Parser } from "@jessejenks/ts-combinator";
 import { Result } from "../utils/result";
 import {
 	Abstraction,
+	Addition,
 	AnnotatedAbstraction,
 	Application,
-	ArrowType,
 	Expression,
+	IntLiteral,
 	Kind,
+	Pair,
 	TypeExpression,
-	TypeVariable,
 	UniversalType,
 	Variable,
 } from "./ast";
 
-const { spaces, exact, validate, sequence, zeroOrMore, oneOf, conditional, lazy, map, succeed, fromRegExp, completely } = Parser;
+const {
+	spaces,
+	exact,
+	int,
+	validate,
+	sequence,
+	zeroOrMore,
+	oneOf,
+	conditional,
+	lazy,
+	map,
+	succeed,
+	fromRegExp,
+	completely,
+	pratt,
+	toBinaryOperator,
+} = Parser;
 
 const typeIdentifier = fromRegExp(/[\u03B1-\u03BA\u03BC-\u03C9A-Z][\u03B1-\u03BA\u03BC-\u03C9A-Za-z0-9_]*/, "a type variable");
 
-const typeVariableParser = map((name): TypeVariable => ({ kind: Kind.TypeVariable, name }), typeIdentifier);
+const typeVariableParser = map((name): TypeExpression => {
+	switch (name) {
+		case "Unit":
+			return { kind: Kind.UnitType };
+		case "Int":
+			return { kind: Kind.IntType };
+		default:
+			return { kind: Kind.TypeVariable, name };
+	}
+}, typeIdentifier);
+
 const universalTypeParser = map(
 	([, [, variable, , , , body]]): UniversalType => ({
 		kind: Kind.UniversalType,
@@ -36,8 +63,8 @@ const universalTypeParser = map(
 		),
 	),
 );
+
 const atomicTypeParser = oneOf(
-	map((): TypeExpression => ({ kind: Kind.UnitType }), exact("1")),
 	typeVariableParser,
 	universalTypeParser,
 	map(
@@ -53,34 +80,25 @@ const atomicTypeParser = oneOf(
 		),
 	),
 );
-const typeArrowParser: Parser<TypeExpression> = map(
-	([left, terms]) => {
-		if (terms.length === 0) {
-			return left;
-		}
-		return [left, ...terms].reduceRight(
-			(acc, curr): ArrowType => ({
-				kind: Kind.ArrowType,
-				left: curr,
-				right: acc,
-			}),
-		);
-	},
-	sequence(
-		lazy(() => atomicTypeParser),
-		zeroOrMore(
-			map(
-				([, , , tp]) => tp,
-				sequence(
-					spaces(),
-					oneOf(exact("→"), exact("->"), exact("⇾")),
-					spaces(),
-					lazy(() => atomicTypeParser),
-				),
-			),
+
+const typeArrowParser: Parser<TypeExpression> = pratt(atomicTypeParser, {
+	infix: {
+		op: oneOf(
+			toBinaryOperator(oneOf(exact("->"), exact("→")), [2, 1]), // right assoc
+			toBinaryOperator(oneOf(exact("x"), exact("×")), [3, 4]),
 		),
-	),
-);
+		acc: (op, left, right): TypeExpression => {
+			switch (op) {
+				case "->":
+				case "→":
+					return { kind: Kind.ArrowType, left, right };
+				case "x":
+				case "×":
+					return { kind: Kind.ProductType, left, right };
+			}
+		},
+	},
+});
 
 const typeParser = typeArrowParser;
 
@@ -96,6 +114,7 @@ const optionalAnnotationParser = oneOf(
 	map(([, [, tp]]) => tp, conditional(sequence(spaces(), exact(":")), sequence(spaces(), typeParser))),
 	succeed(null),
 );
+const integerParser = map((value): IntLiteral => ({ kind: Kind.IntLiteral, value }), int());
 const lambdaParser = map(
 	([, [, [variable, annotation], , , body]]): Abstraction | AnnotatedAbstraction =>
 		annotation === null
@@ -130,7 +149,24 @@ const lambdaParser = map(
 
 const atomParser = oneOf(
 	variableParser,
+	integerParser,
 	lambdaParser,
+	map(
+		([, [, left, , , , right]]): Pair => ({ kind: Kind.Pair, left, right }),
+		conditional(
+			exact("<"),
+			sequence(
+				spaces(),
+				lazy(() => termParser),
+				spaces(),
+				exact(","),
+				spaces(),
+				lazy(() => termParser),
+				spaces(),
+				exact(">"),
+			),
+		),
+	),
 	map(
 		([, e]) => e,
 		conditional(
@@ -158,6 +194,7 @@ const atomParser = oneOf(
 		),
 	),
 );
+
 const applicationParser: Parser<Expression> = map(
 	([left, terms]) =>
 		terms.reduce(
@@ -179,20 +216,31 @@ const applicationParser: Parser<Expression> = map(
 	),
 );
 
+const additionParser: Parser<Expression> = pratt(applicationParser, {
+	infix: {
+		op: toBinaryOperator(exact("+"), [1, 2]),
+		acc: (_, left, right): Addition => ({ kind: Kind.Addition, left, right }),
+	},
+});
+
 const letParser: Parser<Application> = map(
-	([, [variable, , , , expression, , , , body]]): Application => ({
+	([, [variable, annotation, , , , expression, , , , body]]): Application => ({
 		kind: Kind.Application,
-		left: { kind: Kind.Abstraction, variable, body },
+		left:
+			annotation === null
+				? { kind: Kind.Abstraction, variable, body } //
+				: { kind: Kind.AnnotatedAbstraction, variable, annotation, body },
 		right: expression,
 	}),
 	conditional(
 		sequence(exact("let"), spaces(true)),
 		sequence(
 			identifier,
+			optionalAnnotationParser,
 			spaces(),
 			exact("="),
 			spaces(),
-			lazy(() => atomParser),
+			lazy(() => additionParser),
 			spaces(),
 			exact("in"),
 			spaces(true),
@@ -201,7 +249,7 @@ const letParser: Parser<Application> = map(
 	),
 );
 
-const termParser = oneOf(letParser, applicationParser);
+const termParser = oneOf(letParser, additionParser);
 
 export const parse = (input: string) => {
 	const res = completely(termParser).parse(input);

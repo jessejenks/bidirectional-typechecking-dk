@@ -18,18 +18,15 @@ This project also contains an implementation of the classic Damas-Hindley-Milner
 
 ### Extensions
 
-I did allow myself to deviate from the paper in one aspect, which is to add synthesis and checking rules for annotated parameters.
-Terms like `λx:A.e`. I think this is ok, since it is a pure extension. If your term contains no annotated parameters, you will get the exact same derivations as in the paper.
+I did allow myself to deviate from the paper in a few ways. I added syntax and rules for
 
-```
-Γ,β̂,x:A ⊢ e ⇐ β̂ ⊣ Δ,x:A,Θ
-─────────────────────────
- Γ ⊢ λx:A.e ⇒ A → β̂ ⊣ Δ
+- annotated parameters, terms like `λx:A.e`
+- integer literals and Int type.
+- pairs and product types
 
-Γ ⊢ A <: T ⊣ Θ  Θ,x:T ⊢ e ⇐ B ⊣ Δ,x:T,Θ'
-────────────────────────────────────────
-      Γ ⊢ λx:T.e ⇐ A → B ⊣ Δ
-```
+Because there are integers, I use the syntax `Unit` instead of `1`.
+
+These are all extensions on the original system, so if your term doesn't include this syntax, then you will only get derivations in the original system.
 
 Another small difference is that I added let expression syntax support to the DK parsers. These are immediately desugared, so it doesn't change anything about the underlying typechecking, but it makes it easier to compare with HM.
 
@@ -57,8 +54,6 @@ Notice `α̂` now solves to `β̂₂ → β̂₂` instead of `β̂₁ → β̂�
 ## Future Work
 
 The current output trace formats always show the entire context. What would be better is if we saw only the differences between steps.
-
-I may also add rules for `Λ` abstractions, which should be even simpler.
 
 ---
 

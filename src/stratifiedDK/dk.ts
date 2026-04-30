@@ -2,6 +2,7 @@ import { Result } from "../utils/result";
 import { OnTrace } from "../utils/traces";
 import {
 	Abstraction,
+	Addition,
 	AnnotatedAbstraction,
 	AnnotatedExpression,
 	Application,
@@ -11,11 +12,14 @@ import {
 	ExistentialTypeVariable,
 	Expression,
 	expressionToString,
+	IntLiteral,
 	isMonotype,
 	Kind,
 	Monotype,
 	occursCheck,
 	open,
+	Pair,
+	ProductType,
 	TypeExpression,
 	typeExpressionToString,
 	UniversalType,
@@ -145,6 +149,7 @@ export class TypeChecker {
 	apply(tp: TypeExpression): TypeExpression {
 		switch (tp.kind) {
 			case Kind.UnitType:
+			case Kind.IntType:
 			case Kind.BoundTypeVariable:
 			case Kind.FreeTypeVariable:
 				return tp;
@@ -164,6 +169,12 @@ export class TypeChecker {
 			case Kind.ArrowType:
 				return {
 					kind: Kind.ArrowType,
+					left: this.apply(tp.left),
+					right: this.apply(tp.right),
+				};
+			case Kind.ProductType:
+				return {
+					kind: Kind.ProductType,
 					left: this.apply(tp.left),
 					right: this.apply(tp.right),
 				};
@@ -235,9 +246,19 @@ export class TypeChecker {
 			this.leafRule("<:Unit", typeExpressionToString(left), "<:", typeExpressionToString(right));
 			return Result.Ok(null);
 		}
+		// EXTENSION
+		// <:Int
+		if (left.kind === Kind.IntType && right.kind === Kind.IntType) {
+			this.leafRule("<:Int", typeExpressionToString(left), "<:", typeExpressionToString(right));
+			return Result.Ok(null);
+		}
 		// <:ExVar
 		if (left.kind === Kind.ExistentialTypeVariable && right.kind === Kind.ExistentialTypeVariable && left.id === right.id) {
-			this.leafRule("<:ExVar", typeExpressionToString(left), "<:", typeExpressionToString(right));
+			if (this.isRigid(left)) {
+				this.leafRule("<:Var", typeExpressionToString(left), "<:", typeExpressionToString(right));
+			} else {
+				this.leafRule("<:ExVar", typeExpressionToString(left), "<:", typeExpressionToString(right));
+			}
 			return Result.Ok(null);
 		}
 
@@ -247,6 +268,18 @@ export class TypeChecker {
 			return Result.andThen(this.isSubtype(right.left, left.left), () =>
 				Result.map(this.isSubtype(this.apply(left.right), this.apply(right.right)), () =>
 					this.endRule("<:→", typeExpressionToString(left), "<:", typeExpressionToString(right)),
+				),
+			);
+		}
+
+		// EXTENSION
+		// <:×
+		if (left.kind === Kind.ProductType && right.kind === Kind.ProductType) {
+			this.startRule("<:×", typeExpressionToString(left), "<:", typeExpressionToString(right));
+			// no contravariance
+			return Result.andThen(this.isSubtype(left.left, right.left), () =>
+				Result.map(this.isSubtype(this.apply(left.right), this.apply(right.right)), () =>
+					this.endRule("<:×", typeExpressionToString(left), "<:", typeExpressionToString(right)),
 				),
 			);
 		}
@@ -334,6 +367,19 @@ export class TypeChecker {
 			);
 		}
 
+		// InstLProd
+		if (tp.kind === Kind.ProductType) {
+			this.startRule("InstLProd", typeExpressionToString(existential), ":≤", typeExpressionToString(tp));
+			const alpha2 = this.newExistentialAtDepth(existential.depth);
+			const alpha1 = this.newExistentialAtDepth(existential.depth);
+			this.solveAndReplace(existential, { kind: Kind.ProductType, left: alpha1, right: alpha2 }, alpha2, alpha1);
+			return Result.andThen(this.instantiateRight(tp.left, alpha1), () =>
+				Result.map(this.instantiateLeft(alpha2, this.apply(tp.right)), () =>
+					this.endRule("InstLProd", typeExpressionToString(existential), ":≤", typeExpressionToString(tp)),
+				),
+			);
+		}
+
 		// InstLAllR
 		if (tp.kind === Kind.UniversalType) {
 			this.startRule("InstLAllR", typeExpressionToString(existential), ":≤", typeExpressionToString(tp));
@@ -381,6 +427,19 @@ export class TypeChecker {
 			);
 		}
 
+		// InstRProd
+		if (tp.kind === Kind.ProductType) {
+			this.startRule("InstRProd", typeExpressionToString(tp), "≤:", typeExpressionToString(existential));
+			const alpha2 = this.newExistentialAtDepth(existential.depth);
+			const alpha1 = this.newExistentialAtDepth(existential.depth);
+			this.solveAndReplace(existential, { kind: Kind.ProductType, left: alpha1, right: alpha2 }, alpha2, alpha1);
+			return Result.andThen(this.instantiateLeft(alpha1, tp.left), () =>
+				Result.map(this.instantiateRight(this.apply(tp.right), alpha2), () =>
+					this.endRule("InstRProd", typeExpressionToString(tp), "≤:", typeExpressionToString(existential)),
+				),
+			);
+		}
+
 		// InstRAllL
 		if (tp.kind === Kind.UniversalType) {
 			this.startRule("InstRAllL", typeExpressionToString(tp), "≤:", typeExpressionToString(existential));
@@ -401,6 +460,8 @@ export class TypeChecker {
 		switch (expr.kind) {
 			case Kind.UnitLiteral:
 				return this.ruleUnitIntroSynth();
+			case Kind.IntLiteral:
+				return this.ruleIntIntroSynth(expr);
 			case Kind.BoundVariable:
 				return this.ruleVar(expr);
 			case Kind.FreeVariable: {
@@ -418,6 +479,10 @@ export class TypeChecker {
 				return this.ruleAnno(expr);
 			case Kind.AnnotatedAbstraction:
 				return this.ruleAnnotatedArrowIntroSynth(expr);
+			case Kind.Addition:
+				return this.ruleAdditionSynth(expr);
+			case Kind.Pair:
+				return this.rulePairSynth(expr);
 		}
 	}
 
@@ -428,6 +493,9 @@ export class TypeChecker {
 		if (expr.kind === Kind.UnitLiteral && tp.kind === Kind.UnitType) {
 			return this.ruleUnitIntro();
 		}
+		if (expr.kind === Kind.IntLiteral && tp.kind === Kind.IntType) {
+			return this.ruleIntIntro(expr);
+		}
 		if (tp.kind === Kind.UniversalType) {
 			return this.ruleForallIntro(expr, tp);
 		}
@@ -436,6 +504,9 @@ export class TypeChecker {
 		}
 		if (expr.kind === Kind.AnnotatedAbstraction && tp.kind === Kind.ArrowType) {
 			return this.ruleAnnotatedArrowIntro(expr, tp);
+		}
+		if (expr.kind === Kind.Pair && tp.kind === Kind.ProductType) {
+			return this.rulePair(expr, tp);
 		}
 		return this.ruleSub(expr, tp);
 	}
@@ -507,7 +578,7 @@ export class TypeChecker {
 	 * ```
 	 */
 	ruleUnitIntro(): TypeCheck {
-		return Result.Ok(this.leafRule("1I", "()", "⇐", "1"));
+		return Result.Ok(this.leafRule("1I", "()", "⇐", "Unit"));
 	}
 
 	/**
@@ -519,6 +590,29 @@ export class TypeChecker {
 	ruleUnitIntroSynth(): TypeSynthesis {
 		this.leafRule("1I⇒", "()", "⇒", "1");
 		return Result.Ok({ kind: Kind.UnitType });
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * ───────────────
+	 * Γ ⊢ n ⇐ Int ⊣ Γ
+	 * ```
+	 */
+	ruleIntIntro(expr: IntLiteral): TypeCheck {
+		return Result.Ok(this.leafRule("intI", expressionToString(expr), "⇐", "Int"));
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * ───────────────
+	 * Γ ⊢ n ⇒ Int ⊣ Γ
+	 * ```
+	 */
+	ruleIntIntroSynth(expr: IntLiteral): TypeSynthesis {
+		this.leafRule("intI⇒", expressionToString(expr), "⇒", "Int");
+		return Result.Ok({ kind: Kind.IntType });
 	}
 
 	/**
@@ -651,7 +745,7 @@ export class TypeChecker {
 	}
 
 	/**
-	 * CUSTOM
+	 * EXTENSION
 	 * allow annotations on parameters
 	 * ```
 	 * Γ ⊢ A <: T ⊣ Θ  Θ,x:T ⊢ e ⇐ B ⊣ Δ,x:T,Θ'
@@ -671,7 +765,7 @@ export class TypeChecker {
 	}
 
 	/**
-	 * CUSTOM
+	 * EXTENSION
 	 * allow annotations on parameters
 	 * ```
 	 * Γ,β̂,x:A ⊢ e ⇐ β̂ ⊣ Δ,x:A,Θ
@@ -694,5 +788,60 @@ export class TypeChecker {
 			this.endRule("Anno→I⇒", expressionToString(expr), "⇒", typeExpressionToString(tp));
 			return tp;
 		});
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * Γ ⊢ e1 ⇐ Int ⊣ Θ  Θ ⊢ e2 ⇐ Int ⊣ Δ
+	 * ──────────────────────────────────────
+	 *       Γ ⊢ e1 + e2 ⇒ Int ⊣ Δ
+	 * ```
+	 */
+	ruleAdditionSynth(expr: Addition): TypeSynthesis {
+		this.startRule("Add⇒", expressionToString(expr), "⇒", "?");
+		const intType: TypeExpression = { kind: Kind.IntType };
+		return Result.andThen(this.check(expr.left, intType), () =>
+			Result.map(this.check(expr.right, intType), () => {
+				this.endRule("Add⇒", expressionToString(expr), "⇒", typeExpressionToString(intType));
+				return intType;
+			}),
+		);
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * Γ ⊢ e1 ⇒ A ⊣ Θ  Θ ⊢ e2 ⇒ B ⊣ Δ
+	 * ───────────────────────────────
+	 *    Γ ⊢ <e1, e2> ⇒ A × B ⊣ Δ
+	 * ```
+	 */
+	rulePairSynth(expr: Pair): TypeSynthesis {
+		this.startRule("Pair⇒", expressionToString(expr), "⇒", "?");
+		return Result.andThen(this.synthesize(expr.left), (A) =>
+			Result.map(this.synthesize(expr.right), (B) => {
+				const type: TypeExpression = { kind: Kind.ProductType, left: A, right: B };
+				this.endRule("Pair⇒", expressionToString(expr), "⇒", typeExpressionToString(type));
+				return type;
+			}),
+		);
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * Γ ⊢ e1 ⇐ A ⊣ Θ  Θ ⊢ e2 ⇐ B ⊣ Δ
+	 * ───────────────────────────────
+	 *    Γ ⊢ <e1, e2> ⇐ A × B ⊣ Δ
+	 * ```
+	 */
+	rulePair(expr: Pair, tp: ProductType): TypeCheck {
+		this.startRule("Pair", expressionToString(expr), "⇐", typeExpressionToString(tp));
+		return Result.andThen(this.check(expr.left, tp.left), () =>
+			Result.map(this.check(expr.right, tp.right), () => {
+				return this.endRule("Pair", expressionToString(expr), "⇐", typeExpressionToString(tp));
+			}),
+		);
 	}
 }

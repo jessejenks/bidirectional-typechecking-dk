@@ -3,9 +3,9 @@ import { Result } from "../src/utils/result";
 import { traceToProofTree } from "../src/utils/traces";
 
 const testCases: string[] = [
-	"λx.x",
+	// "λx.x",
 	// "let x = () in x",
-	"let id = (λx.x) in id",
+	"let id = (λx.x) in <id 1, id ()>",
 	// "let id = (λx.x) in let y = () in id y",
 	// "λf.f (f ())",
 	// "λx.λf.f (f x)",
