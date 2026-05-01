@@ -9,6 +9,8 @@
     "dist"
   ],
   "scripts": {
+    "test": "tsx --tsconfig tsconfig.test.json --test src/tests/*.test.ts",
+    "test:coverage": "c8 --reporter=html --reporter=text tsx --tsconfig tsconfig.test.json --test src/tests/*.test.ts",
     "build": "rollup -c"
   },
   "keywords": [],
@@ -18,8 +20,11 @@
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-terser": "1.0.0",
     "@rollup/plugin-typescript": "12.3.0",
+    "@types/node": "25.6.0",
+    "c8": "11.0.0",
     "rollup": "4.60.2",
     "tslib": "2.8.1",
+    "tsx": "4.21.0",
     "typescript": "5.9.3"
   },
   "dependencies": {

@@ -16,5 +16,7 @@ export namespace Result {
 
 	export const andThen = <A, B, E>(r: Result<A, E>, f: (a: A) => Result<B, E>): Result<B, E> => (r.isOk ? f(r.value) : r);
 
+	export const orElse = <T, E, S>(r: Result<T, E>, onErr: (e: E) => T): T => (r.isOk ? r.value : onErr(r.err));
+
 	export const elim = <T, E, S>(r: Result<T, E>, onOk: (t: T) => S, onErr: (e: E) => S): S => (r.isOk ? onOk(r.value) : onErr(r.err));
 }
