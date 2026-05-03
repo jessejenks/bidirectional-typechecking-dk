@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "rootDir": "src",
+        "rootDir": ".",
         "outDir": "dist",
         "module": "ESNext",
         "types": ["node"],
@@ -13,5 +13,5 @@
         "declaration": true,
         "declarationDir": "dist/types"
     },
-    "include": ["src"]
+    "include": ["src", "cli"]
 }
