@@ -53,6 +53,12 @@ function elaborateInner(termVariables: string[], expr: surface.Expression): core
 				left: elaborateInner(termVariables, expr.left),
 				right: elaborateInner(termVariables, expr.right),
 			};
+		case surface.Kind.Projection:
+			return {
+				kind: core.Kind.Projection,
+				expression: elaborateInner(termVariables, expr.expression),
+				side: expr.side,
+			};
 	}
 }
 
@@ -78,6 +84,8 @@ function unelaborateInner(depth: number, expr: core.Expression): surface.Express
 			return { kind: surface.Kind.Addition, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
 		case core.Kind.Pair:
 			return { kind: surface.Kind.Pair, left: unelaborateInner(depth, expr.left), right: unelaborateInner(depth, expr.right) };
+		case core.Kind.Projection:
+			return { kind: surface.Kind.Projection, expression: unelaborateInner(depth, expr.expression), side: expr.side };
 		case core.Kind.Let:
 			return {
 				kind: surface.Kind.Let,

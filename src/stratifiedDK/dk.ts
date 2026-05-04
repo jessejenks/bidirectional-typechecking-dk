@@ -20,6 +20,7 @@ import {
 	open,
 	Pair,
 	ProductType,
+	Projection,
 	TypeExpression,
 	typeExpressionToString,
 	UniversalType,
@@ -483,6 +484,8 @@ export class TypeChecker {
 				return this.ruleAdditionSynth(expr);
 			case Kind.Pair:
 				return this.rulePairSynth(expr);
+			case Kind.Projection:
+				return this.ruleProjectionSynth(expr);
 		}
 	}
 
@@ -826,6 +829,29 @@ export class TypeChecker {
 				return type;
 			}),
 		);
+	}
+
+	/**
+	 * EXTENSION
+	 * ```
+	 * Γ ⊢ e ⇒ A ⊣ Θ  Θ,α̂₂,α̂₁ ⊢ [Θ]A <: α̂₁ × α̂₂ ⊣ Δ
+	 * ─────────────────────────────────────────────
+	 *          Γ ⊢ fst(e) ⇒ α̂₁ ⊣ Δ
+	 *          Γ ⊢ snd(e) ⇒ α̂₂ ⊣ Δ
+	 * ```
+	 */
+	ruleProjectionSynth(expr: Projection): TypeSynthesis {
+		this.startRule(`Projection ${expr.side}⇒`, expressionToString(expr), "⇒", "?");
+		return Result.andThen(this.synthesize(expr.expression), (A) => {
+			const alpha1 = this.newExistential();
+			const alpha2 = this.newExistential();
+			const product: ProductType = { kind: Kind.ProductType, left: alpha1, right: alpha2 };
+			return Result.map(this.isSubtype(this.apply(A), product), () => {
+				const type = expr.side === "fst" ? alpha1 : alpha2;
+				this.endRule(`Projection ${expr.side}⇒`, expressionToString(expr), "⇒", typeExpressionToString(type));
+				return type;
+			});
+		});
 	}
 
 	/**

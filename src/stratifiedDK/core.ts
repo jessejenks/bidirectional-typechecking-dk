@@ -12,6 +12,7 @@ export const enum Kind {
 	AnnotatedAbstraction,
 	Addition,
 	Pair,
+	Projection,
 	// Types
 	UnitType,
 	IntType,
@@ -58,6 +59,11 @@ export type Pair = {
 	left: Expression;
 	right: Expression;
 };
+export type Projection = {
+	kind: Kind.Projection;
+	expression: Expression;
+	side: "fst" | "snd";
+};
 
 export type Expression =
 	| UnitLiteral
@@ -69,7 +75,8 @@ export type Expression =
 	| AnnotatedExpression
 	| AnnotatedAbstraction
 	| Addition
-	| Pair;
+	| Pair
+	| Projection;
 
 export function expressionToString(expr: Expression): string {
 	switch (expr.kind) {
@@ -105,6 +112,8 @@ export function expressionToString(expr: Expression): string {
 			return `${expressionToString(expr.left)} + ${expressionToString(expr.right)}`;
 		case Kind.Pair:
 			return `<${expressionToString(expr.left)}, ${expressionToString(expr.right)}>`;
+		case Kind.Projection:
+			return `${expr.side}(${expressionToString(expr.expression)})`;
 	}
 }
 
@@ -115,6 +124,7 @@ function shouldParenthesize(expr: Expression): boolean {
 		case Kind.BoundVariable:
 		case Kind.FreeVariable:
 		case Kind.Pair:
+		case Kind.Projection:
 			return false;
 		case Kind.Abstraction:
 		case Kind.Application:

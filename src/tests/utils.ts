@@ -70,6 +70,8 @@ export function areExpressionsStructurallyEqual(p: paper.ast.Expression, s: stra
 				areExpressionsStructurallyEqual(p.left, s.left) &&
 				areExpressionsStructurallyEqual(p.right, s.right)
 			);
+		case paper.ast.Kind.Projection:
+			return s.kind === stratified.core.Kind.Projection && p.side === s.side && areExpressionsStructurallyEqual(p.expression, s.expression);
 	}
 }
 
@@ -142,6 +144,8 @@ export function areExpressionsStructurallyEqualHM(p: paper.ast.Expression, h: hm
 				areExpressionsStructurallyEqualHM(p.left, h.left) &&
 				areExpressionsStructurallyEqualHM(p.right, h.right)
 			);
+		case paper.ast.Kind.Projection:
+			return h.kind === hm.core.Kind.Projection && p.side === h.side && areExpressionsStructurallyEqualHM(p.expression, h.expression);
 	}
 }
 
@@ -217,6 +221,12 @@ export function areStratifiedSurfaceExpressionsStructurallyEqual(
 				areStratifiedSurfaceExpressionsStructurallyEqual(a.left, b.left) &&
 				areStratifiedSurfaceExpressionsStructurallyEqual(a.right, b.right)
 			);
+		case stratified.surface.Kind.Projection:
+			return (
+				b.kind === stratified.surface.Kind.Projection &&
+				a.side === b.side &&
+				areStratifiedSurfaceExpressionsStructurallyEqual(a.expression, b.expression)
+			);
 	}
 }
 
@@ -247,6 +257,10 @@ export function areHMSurfaceExpressionsStructurallyEqual(a: hm.surface.Expressio
 				b.kind === hm.surface.Kind.Pair &&
 				areHMSurfaceExpressionsStructurallyEqual(a.left, b.left) &&
 				areHMSurfaceExpressionsStructurallyEqual(a.right, b.right)
+			);
+		case hm.surface.Kind.Projection:
+			return (
+				b.kind === hm.surface.Kind.Projection && a.side === b.side && areHMSurfaceExpressionsStructurallyEqual(a.expression, b.expression)
 			);
 		case hm.surface.Kind.Let:
 			return (

@@ -19,6 +19,8 @@ describe("evaluation", () => {
 		"(λx.x + 1) 1",
 		"let x = 1 in let y = x in x + y",
 		"λy.((λx.x) y) 1",
+		"snd(<(), 1 + 2>)",
+		"(λx.fst(<x, x>)) 1",
 	];
 
 	okCases.forEach((input) => {

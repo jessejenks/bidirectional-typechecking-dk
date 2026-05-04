@@ -1,6 +1,6 @@
-import { Abstraction, Expression, IntLiteral, Kind, Pair, UnitLiteral, Variable } from "./ast";
+import { Abstraction, Expression, IntLiteral, Kind, UnitLiteral, Variable } from "./ast";
 
-type Value = UnitLiteral | IntLiteral | Variable | Abstraction | Pair;
+type Value = UnitLiteral | IntLiteral | Variable | Abstraction | { kind: Kind.Pair; left: Value; right: Value };
 
 // Call by value
 export function evaluate(expr: Expression): Value {
@@ -36,6 +36,13 @@ export function evaluate(expr: Expression): Value {
 		}
 		case Kind.Pair:
 			return { kind: Kind.Pair, left: evaluate(expr.left), right: evaluate(expr.right) };
+		case Kind.Projection: {
+			const e = evaluate(expr.expression);
+			if (e.kind !== Kind.Pair) {
+				throw new Error("evaluation error");
+			}
+			return expr.side === "fst" ? e.left : e.right;
+		}
 	}
 }
 
@@ -74,6 +81,12 @@ function substitute(variable: string, inExpr: Expression, withValue: Value): Exp
 				kind: Kind.Pair,
 				left: substitute(variable, inExpr.left, withValue),
 				right: substitute(variable, inExpr.right, withValue),
+			};
+		case Kind.Projection:
+			return {
+				kind: Kind.Projection,
+				side: inExpr.side,
+				expression: substitute(variable, inExpr.expression, withValue),
 			};
 	}
 }

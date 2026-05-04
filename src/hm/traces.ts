@@ -2,7 +2,9 @@ import type { OnTrace, Trace } from "../utils/traces";
 
 const onEnd = (traces: Trace[], trace: Trace) => {
 	switch (trace.name) {
-		case "Abs": {
+		case "Abs":
+		case "Projection fst":
+		case "Projection snd": {
 			const c = traces.pop()!;
 			trace.children.push(c);
 			traces.push(trace);

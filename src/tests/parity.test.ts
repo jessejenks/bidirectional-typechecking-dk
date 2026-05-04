@@ -66,6 +66,11 @@ describe("compare DK implementations", () => {
 		"let x = ((<1, λx.x>) : Int × ∀α.α → α) in (λy.y) x",
 		"(λx.x) (λp:(∀α.α → α) × Int.1)",
 		"(λx.x) : ∀α.α → α",
+		"fst(<1, ()>)",
+		"(fst(<1, ()>)) : Int",
+		"snd(<1, ()>)",
+		"(snd(<1, ()>)) : Unit",
+		"λx.fst(x)",
 	];
 	okCases.forEach((input) =>
 		it(`handles "${input}"`, () => {
@@ -144,6 +149,8 @@ describe("compare DK vs HM implementations", () => {
 		["(λx.x) ()"],
 		["(λx.x) (λy.y)"],
 		["let id = (λx.x) in <id 1, id ()>", "let id : ∀α.α → α = (λx.x) in <id 1, id ()>"],
+		["fst(<1, ()>)"],
+		["snd(<1, ()>)"],
 	];
 	okCases.forEach(([input, paperInput]) =>
 		it(`handles "${input}"`, () => {

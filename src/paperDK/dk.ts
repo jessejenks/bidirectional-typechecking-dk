@@ -15,6 +15,7 @@ import {
 	occursCheck,
 	Pair,
 	ProductType,
+	Projection,
 	substituteType,
 	TypeExpression,
 	typeExpressionToString,
@@ -329,6 +330,8 @@ export function synthesize(ctx: Context, expr: Expression): TypeSynthesis {
 			return ruleAdditionSynth(ctx, expr);
 		case Kind.Pair:
 			return rulePairSynth(ctx, expr);
+		case Kind.Projection:
+			return ruleProjectionSynth(ctx, expr);
 	}
 }
 
@@ -679,6 +682,31 @@ export const rulePairSynth = (ctx: Context, expr: Pair): TypeSynthesis => {
 			return { type, ctx };
 		}),
 	);
+};
+
+/**
+ * EXTENSION
+ * ```
+ * Γ ⊢ e ⇒ A ⊣ Θ  Θ,α̂₁,α̂₂ ⊢ [Θ]A <: α̂₁ × α̂₂ ⊣ Δ
+ * ─────────────────────────────────────────────
+ *          Γ ⊢ fst(e) ⇒ α̂₁ ⊣ Δ
+ *          Γ ⊢ snd(e) ⇒ α̂₂ ⊣ Δ
+ * ```
+ */
+export const ruleProjectionSynth = (ctx: Context, expr: Projection): TypeSynthesis => {
+	ctx.startRule(`Projection ${expr.side}⇒`, expressionToString(expr), "⇒", "?");
+	return Result.andThen(synthesize(ctx, expr.expression), ({ type: A, ctx }) => {
+		const alpha1 = ctx.newExistential();
+		ctx.pushExistential(alpha1);
+		const alpha2 = ctx.newExistential();
+		ctx.pushExistential(alpha2);
+		const product: ProductType = { kind: Kind.ProductType, left: alpha1, right: alpha2 };
+		return Result.map(isSubtype(ctx, ctx.apply(A), product), (ctx) => {
+			const type = expr.side === "fst" ? alpha1 : alpha2;
+			ctx.endRule(`Projection ${expr.side}⇒`, expressionToString(expr), "⇒", typeExpressionToString(type));
+			return { type, ctx };
+		});
+	});
 };
 
 /**

@@ -7,6 +7,7 @@ export const enum Kind {
 	Abstraction,
 	Addition,
 	Pair,
+	Projection,
 	Let,
 }
 
@@ -33,6 +34,11 @@ export type Pair = {
 	left: Expression;
 	right: Expression;
 };
+export type Projection = {
+	kind: Kind.Projection;
+	expression: Expression;
+	side: "fst" | "snd";
+};
 export type Let = {
 	kind: Kind.Let;
 	variable: string;
@@ -40,7 +46,7 @@ export type Let = {
 	body: Expression;
 };
 
-export type Expression = UnitLiteral | IntLiteral | Variable | Application | Abstraction | Addition | Pair | Let;
+export type Expression = UnitLiteral | IntLiteral | Variable | Application | Abstraction | Addition | Pair | Projection | Let;
 
 export function expressionToString(expr: Expression): string {
 	switch (expr.kind) {
@@ -72,6 +78,8 @@ export function expressionToString(expr: Expression): string {
 			return `${expressionToString(expr.left)} + ${expressionToString(expr.right)}`;
 		case Kind.Pair:
 			return `<${expressionToString(expr.left)}, ${expressionToString(expr.right)}>`;
+		case Kind.Projection:
+			return `${expr.side}(${expressionToString(expr.expression)})`;
 		case Kind.Let:
 			return `let ${expr.variable} = ${expressionToString(expr.expression)} in ${expressionToString(expr.body)}`;
 	}
@@ -83,6 +91,7 @@ function shouldParenthesize(expr: Expression): boolean {
 		case Kind.IntLiteral:
 		case Kind.Variable:
 		case Kind.Pair:
+		case Kind.Projection:
 			return false;
 		case Kind.Application:
 		case Kind.Abstraction:

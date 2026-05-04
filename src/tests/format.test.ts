@@ -68,6 +68,9 @@ describe("roundtrip through formatting (HM)", () => {
 		"λx.<x, x 1>",
 		"let x = λx.x in <x, x>",
 		"<λx.x, λx.x>",
+		"fst(<1, ()>)",
+		"snd(<1, ()>)",
+		"let x = λx.x in fst(<x, x>)",
 	];
 	testCases.forEach((input) => {
 		it(`hm handles "${input}"`, () => {

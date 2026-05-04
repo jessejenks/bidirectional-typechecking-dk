@@ -9,6 +9,7 @@ import {
 	IntLiteral,
 	Kind,
 	Pair,
+	Projection,
 	TypeExpression,
 	UniversalType,
 	Variable,
@@ -107,7 +108,7 @@ export const parseType = (input: string) => {
 	return LibResult.isOk(res) ? Result.Ok(res.value.parsed) : Result.Err(res.error.message);
 };
 
-const keywords = new Set(["let", "in"]);
+const keywords = new Set(["let", "in", "fst", "snd"]);
 const identifier = validate((ident) => !keywords.has(ident), fromRegExp(/[a-z][a-zA-Z0-9_]*/, "a variable"));
 const variableParser = map((name): Variable => ({ kind: Kind.Variable, name }), identifier);
 const optionalAnnotationParser = oneOf(
@@ -147,10 +148,26 @@ const lambdaParser = map(
 	),
 );
 
+const projectionParser = map(
+	([side, [, , , expression]]): Projection => ({ kind: Kind.Projection, expression, side }),
+	conditional(
+		oneOf(exact("fst"), exact("snd")),
+		sequence(
+			spaces(),
+			exact("("),
+			spaces(),
+			lazy(() => termParser),
+			spaces(),
+			exact(")"),
+		),
+	),
+);
+
 const atomParser = oneOf(
 	variableParser,
 	integerParser,
 	lambdaParser,
+	projectionParser,
 	map(
 		([, [, left, , , , right]]): Pair => ({ kind: Kind.Pair, left, right }),
 		conditional(

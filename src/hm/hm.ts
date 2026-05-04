@@ -13,6 +13,7 @@ import {
 	Kind,
 	Let,
 	Pair,
+	Projection,
 	TypeExpression,
 	typeExpressionToString,
 	TypeKind,
@@ -110,6 +111,8 @@ export class TypeChecker {
 				return this.ruleAddition(expr);
 			case Kind.Pair:
 				return this.rulePair(expr);
+			case Kind.Projection:
+				return this.ruleProjection(expr);
 			case Kind.Let:
 				return this.ruleLet(expr);
 		}
@@ -224,6 +227,28 @@ export class TypeChecker {
 			Result.map(this.algorithmJ(expr.right), (right) => {
 				const tp: TypeExpression = { kind: TypeKind.ProductType, left, right };
 				this.endRule("Pair", expressionToString(expr), ":", typeExpressionToString(tp));
+				return tp;
+			}),
+		);
+	}
+
+	/**
+	 * Γ ⊢ e : τ    unify(τ, τ̂₁ × τ̂₂)
+	 * ────────────────────────────── Projection fst
+	 *       Γ ⊢ fst(e) : τ̂₁
+	 *
+	 * Γ ⊢ e : τ    unify(τ, τ̂₁ × τ̂₂)
+	 * ────────────────────────────── Projection snd
+	 *       Γ ⊢ snd(e) : τ̂₂
+	 */
+	protected ruleProjection(expr: Projection): TypeInference {
+		this.startRule(`Projection ${expr.side}`, expressionToString(expr), ":", "?");
+		const tau1 = this.newUnificationVariable();
+		const tau2 = this.newUnificationVariable();
+		return Result.andThen(this.algorithmJ(expr.expression), (tau) =>
+			Result.map(this.unify(tau, { kind: TypeKind.ProductType, left: tau1, right: tau2 }), () => {
+				const tp = expr.side === "fst" ? tau1 : tau2;
+				this.endRule(`Projection ${expr.side}`, expressionToString(expr), ":", typeExpressionToString(tp));
 				return tp;
 			}),
 		);
