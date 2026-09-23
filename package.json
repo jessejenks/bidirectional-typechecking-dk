@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Dunfield and Krishnaswami bidirectional typechecking",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
   "types": "dist/types/index.d.ts",
   "files": [
     "dist"
